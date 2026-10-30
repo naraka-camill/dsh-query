@@ -3,6 +3,8 @@ import * as vscode from 'vscode';
 const API_KEY_SECRET = 'deepseekBalance.apiKey';
 const BALANCE_URL = 'https://api.deepseek.com/user/balance';
 const MODELS_URL = 'https://api.deepseek.com/models';
+const DAILY_CONSUMPTION_KEY = 'deepseekBalance.dailyConsumption';
+const BALANCE_POLL_INTERVAL = 15 * 60 * 1000;
 
 interface BalanceInfo {
   currency: string;
@@ -14,6 +16,12 @@ interface BalanceInfo {
 interface BalanceResponse {
   is_available: boolean;
   balance_infos: BalanceInfo[];
+}
+
+interface DailyConsumptionState {
+  day: string;
+  balanceMinorUnitsByCurrency: Record<string, number>;
+  consumedMinorUnitsByCurrency: Record<string, number>;
 }
 
 interface ModelInfo {
@@ -66,6 +74,40 @@ function isModelsResponse(value: unknown): value is ModelsResponse {
     });
 }
 
+function localDateKey(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function recordDailyConsumption(
+  previous: DailyConsumptionState | undefined,
+  balance: BalanceResponse,
+  date = new Date()
+): DailyConsumptionState {
+  const day = localDateKey(date);
+  const sameDay = previous?.day === day;
+  const balanceMinorUnitsByCurrency = Object.fromEntries(
+    balance.balance_infos.map(info => [info.currency, Math.round(Number(info.total_balance) * 100)])
+  );
+  const consumedMinorUnitsByCurrency = sameDay
+    ? { ...previous.consumedMinorUnitsByCurrency }
+    : {};
+
+  if (sameDay && previous) {
+    for (const [currency, currentBalance] of Object.entries(balanceMinorUnitsByCurrency)) {
+      const previousBalance = previous.balanceMinorUnitsByCurrency[currency];
+      if (previousBalance !== undefined && currentBalance < previousBalance) {
+        consumedMinorUnitsByCurrency[currency] =
+          (consumedMinorUnitsByCurrency[currency] ?? 0) + previousBalance - currentBalance;
+      }
+    }
+  }
+
+  return { day, balanceMinorUnitsByCurrency, consumedMinorUnitsByCurrency };
+}
+
 async function requestJson<T>(url: string, apiKey: string, isExpected: (value: unknown) => value is T): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
@@ -113,7 +155,7 @@ class BalanceTreeItem extends vscode.TreeItem {
   constructor(
     label: string,
     collapsibleState: vscode.TreeItemCollapsibleState,
-    readonly section?: 'balance' | 'models'
+    readonly section?: 'balance' | 'models' | 'consumption'
   ) {
     super(label, collapsibleState);
   }
@@ -125,9 +167,14 @@ class DeepSeekTreeProvider implements vscode.TreeDataProvider<BalanceTreeItem> {
   private apiKeyConfigured = false;
   private loading = false;
   private balance?: BalanceResponse;
+  private dailyConsumption?: DailyConsumptionState;
   private models?: ModelInfo[];
   private balanceError?: string;
   private modelsError?: string;
+
+  constructor(private readonly globalState: vscode.Memento) {
+    this.dailyConsumption = globalState.get<DailyConsumptionState>(DAILY_CONSUMPTION_KEY);
+  }
 
   getTreeItem(element: BalanceTreeItem): vscode.TreeItem {
     return element;
@@ -140,6 +187,7 @@ class DeepSeekTreeProvider implements vscode.TreeDataProvider<BalanceTreeItem> {
       }
       return [
         new BalanceTreeItem('余额', vscode.TreeItemCollapsibleState.Expanded, 'balance'),
+        new BalanceTreeItem('今日消耗（估算）', vscode.TreeItemCollapsibleState.Expanded, 'consumption'),
         new BalanceTreeItem('可用模型', vscode.TreeItemCollapsibleState.Expanded, 'models')
       ];
     }
@@ -179,6 +227,26 @@ class DeepSeekTreeProvider implements vscode.TreeDataProvider<BalanceTreeItem> {
       });
     }
 
+    if (element.section === 'consumption') {
+      const state = this.dailyConsumption;
+      if (!state || state.day !== localDateKey()) {
+        return [new BalanceTreeItem('等待今日余额采样', vscode.TreeItemCollapsibleState.None)];
+      }
+      if (!this.balance || this.balance.balance_infos.length === 0) {
+        return [new BalanceTreeItem('暂无余额信息', vscode.TreeItemCollapsibleState.None)];
+      }
+
+      return this.balance.balance_infos.map(info => {
+        const minorUnits = state.consumedMinorUnitsByCurrency[info.currency] ?? 0;
+        const item = new BalanceTreeItem(
+          `${info.currency} ${(minorUnits / 100).toFixed(2)}`,
+          vscode.TreeItemCollapsibleState.None
+        );
+        item.description = '今日估算消耗';
+        return item;
+      });
+    }
+
     if (this.modelsError) {
       return [new BalanceTreeItem(`加载失败：${this.modelsError}`, vscode.TreeItemCollapsibleState.None)];
     }
@@ -202,6 +270,24 @@ class DeepSeekTreeProvider implements vscode.TreeDataProvider<BalanceTreeItem> {
     this.changeEmitter.fire(undefined);
   }
 
+  private async saveBalanceSample(balance: BalanceResponse): Promise<void> {
+    this.balance = balance;
+    this.balanceError = undefined;
+    this.dailyConsumption = recordDailyConsumption(this.dailyConsumption, balance);
+    await this.globalState.update(DAILY_CONSUMPTION_KEY, this.dailyConsumption);
+    this.changeEmitter.fire(undefined);
+  }
+
+  async sampleBalance(apiKey: string): Promise<void> {
+    try {
+      const balance = await requestJson(BALANCE_URL, apiKey, isBalanceResponse);
+      await this.saveBalanceSample(balance);
+    } catch (error) {
+      this.balanceError = errorMessage(error);
+      this.changeEmitter.fire(undefined);
+    }
+  }
+
   async refresh(apiKey: string): Promise<string[]> {
     this.loading = true;
     this.balance = undefined;
@@ -217,7 +303,7 @@ class DeepSeekTreeProvider implements vscode.TreeDataProvider<BalanceTreeItem> {
       ]);
 
       if (balanceResult.status === 'fulfilled') {
-        this.balance = balanceResult.value;
+        await this.saveBalanceSample(balanceResult.value);
       } else {
         this.balanceError = errorMessage(balanceResult.reason);
       }
@@ -241,7 +327,7 @@ function errorMessage(error: unknown): string {
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const provider = new DeepSeekTreeProvider();
+  const provider = new DeepSeekTreeProvider(context.globalState);
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('deepseekBalance.view', provider)
   );
@@ -269,6 +355,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }
   };
+
+  let polling = false;
+  const pollBalance = async (): Promise<void> => {
+    if (polling) {
+      return;
+    }
+    polling = true;
+    try {
+      const apiKey = await context.secrets.get(API_KEY_SECRET);
+      if (apiKey) {
+        await provider.sampleBalance(apiKey);
+      }
+    } catch (error) {
+      await vscode.window.showErrorMessage(`每日余额采样失败：${errorMessage(error)}`);
+    } finally {
+      polling = false;
+    }
+  };
+
+  const pollTimer = setInterval(() => void pollBalance(), BALANCE_POLL_INTERVAL);
+  context.subscriptions.push({ dispose: () => clearInterval(pollTimer) });
 
   context.subscriptions.push(
     vscode.commands.registerCommand('deepseekBalance.refresh', () => refresh(true)),
