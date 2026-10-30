@@ -1,4 +1,4 @@
-# DeepSeek Balance
+# DeepSeek Usage
 
 在 VS Code 活动栏中查看 DeepSeek API 账户余额和当前可用模型。
 

@@ -187,7 +187,7 @@ class DeepSeekTreeProvider implements vscode.TreeDataProvider<BalanceTreeItem> {
       }
       return [
         new BalanceTreeItem('余额', vscode.TreeItemCollapsibleState.Expanded, 'balance'),
-        new BalanceTreeItem('今日消耗（估算）', vscode.TreeItemCollapsibleState.Expanded, 'consumption'),
+        new BalanceTreeItem('今日消耗', vscode.TreeItemCollapsibleState.Expanded, 'consumption'),
         new BalanceTreeItem('可用模型', vscode.TreeItemCollapsibleState.Expanded, 'models')
       ];
     }

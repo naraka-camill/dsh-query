@@ -1,9 +1,10 @@
 {
-  "name": "deepseek-balance",
-  "displayName": "DeepSeek Balance",
-  "description": "View your DeepSeek API balance and available models in the Activity Bar.",
+  "name": "deepseek-usage-query",
+  "displayName": "DeepSeek Usage Query",
+  "description": "Track your DeepSeek API balance and estimated daily usage in VS Code.",
   "version": "0.0.1",
-  "publisher": "local",
+  "publisher": "wuhj2001",
+  "icon": "media/icon.png",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -19,7 +20,7 @@
       "activitybar": [
         {
           "id": "deepseekBalance",
-          "title": "DeepSeek",
+          "title": "DeepSeek Usage",
           "icon": "media/deepseek.svg"
         }
       ]
@@ -73,6 +74,7 @@
   "devDependencies": {
     "@types/node": "^20.17.0",
     "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^4.1.0",
     "typescript": "^5.7.2"
   }
 }
