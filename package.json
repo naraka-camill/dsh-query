@@ -2,8 +2,16 @@
   "name": "deepseek-usage-query",
   "displayName": "DeepSeek Usage Query",
   "description": "Track your DeepSeek API balance and estimated daily usage in VS Code.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "wuhj2001",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/naraka-camill/dsh-query.git"
+  },
+  "bugs": {
+    "url": "https://github.com/naraka-camill/dsh-query/issues"
+  },
+  "homepage": "https://github.com/naraka-camill/dsh-query#readme",
   "icon": "media/icon.png",
   "engines": {
     "vscode": "^1.90.0"
