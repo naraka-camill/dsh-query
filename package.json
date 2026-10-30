@@ -1,0 +1,78 @@
+{
+  "name": "deepseek-balance",
+  "displayName": "DeepSeek Balance",
+  "description": "View your DeepSeek API balance and available models in the Activity Bar.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:deepseekBalance.view"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "deepseekBalance",
+          "title": "DeepSeek",
+          "icon": "media/deepseek.svg"
+        }
+      ]
+    },
+    "views": {
+      "deepseekBalance": [
+        {
+          "id": "deepseekBalance.view",
+          "name": "DeepSeek 账户"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "deepseekBalance.refresh",
+        "title": "刷新余额和模型",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "deepseekBalance.setApiKey",
+        "title": "设置 DeepSeek API Key",
+        "icon": "$(key)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "deepseekBalance.refresh",
+          "when": "view == deepseekBalance.view",
+          "group": "navigation"
+        },
+        {
+          "command": "deepseekBalance.setApiKey",
+          "when": "view == deepseekBalance.view",
+          "group": "navigation"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "deepseekBalance.view",
+        "contents": "设置 API Key 后查看 DeepSeek 余额和可用模型。\n[设置 API Key](command:deepseekBalance.setApiKey)"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.7.2"
+  }
+}
